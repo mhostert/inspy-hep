@@ -1,3 +1,5 @@
+import warnings
+import requests
 from pylatexenc.latexencode import unicode_to_latex
 from dataclasses import dataclass
 
@@ -13,7 +15,11 @@ class InspiresRecord:
             setattr(self, f'ins_{key}', self.record[key])
 
         # main key that identifies a record (used by latex)
-        self.texkey = self.ins_texkeys[0]
+        try:
+            self.texkey = self.ins_texkeys[0]
+        except AttributeError:
+            warnings.warn(f"No texkey found for record {self.record}. Skipping it.")
+            return 
 
         # main key that identifies a record (used by latex)
         self.document_type = self.ins_document_type[0]
@@ -53,6 +59,12 @@ class InspiresRecord:
         self.capped_at_1_authorlist_fullname = self.get_authorlist(cap=1)
         self.capped_at_3_authorlist_fullname = self.get_authorlist(cap=3)
 
+        ''' Year information. Tries the following:
+            1 - Journal
+            2 - preprint date
+            3 - Inspires earliest_date
+            4 - info in texkeys
+        '''
         try:
             self.year = int(self.record['publication_info'][0]['year'])
         except KeyError:
@@ -68,26 +80,31 @@ class InspiresRecord:
                         print("No year found in Inspires record.")
                         self.year = None
 
+        # Title of the Journal
         try:
             self.pub_title = self.record['publication_info'][0]['journal_title']
         except KeyError:
             self.pub_title = ''
-
+        
+        # Journal Volume
         try:
             self.pub_volume = self.record['publication_info'][0]['journal_volume']
         except KeyError:
             self.pub_volume = ''
-
+        
+        # Journal Issue
         try:
             self.pub_issue = self.record['publication_info'][0]['journal_issue']
         except KeyError:
             self.pub_issue = ''
 
+        # Journal article id
         try:
             self.pub_artid = self.record['publication_info'][0]['artid']
         except KeyError:
             self.pub_artid = ''
-
+        
+        # publication id 
         try:
             self.pub_year = int(self.record['publication_info'][0]['year'])
         except KeyError:
@@ -98,27 +115,45 @@ class InspiresRecord:
         # Is it a proceedings?
         self.proceedings = (['document_type'] == 'conference paper')
 
+        # arXiv number (xxxx.yyyyy)
         try:
             self.arxiv_number = self.record['arxiv_eprints'][0]['value']
         except KeyError:
             self.arxiv_number = None
-
+        
+        # arXiv category (e.g., hep-ph)
         try:
             self.primary_arxiv_category = self.record['primary_arxiv_category']
         except KeyError:
             self.primary_arxiv_category = None
 
+        # arxiv url
         if self.arxiv_number is not None:
             self.arxiv_url = f'https://arxiv.org/abs/{self.arxiv_number}'
         else:
             self.arxiv_number = None
 
-        
         self.citation_count = self.ins_citation_count
         self.ins_citation_count_without_self_citations = self.ins_citation_count_without_self_citations
         self.citation_count_no_self = self.ins_citation_count_without_self_citations
 
-    def __repr__(self):
+    def get_bibtex_from_key(self, key) -> str:
+        """get_bibtex_from_key get the bibtex entry for a record from the Inspires key
+
+        Parameters
+        ----------
+        key : str
+            Inspires key for the record (e.g., Weinberg:1967tq)
+        """
+        response = requests.get(f"https://inspirehep.net/api/literature?q=texkeys:{key}&format=bibtex")
+        if response.status_code == 200:
+            return (response.content).decode("utf-8")
+        else:
+            warnings.warn(f"Could not find Inspire entry for texkey={key}.")
+            return None
+            
+
+    def __repr__(self) -> str:
         if self.author_count > 3:
             authors_shown = self.capped_at_1_authorlist
         else:
@@ -141,10 +176,10 @@ class InspiresRecord:
     def get_year_from_date(self, date: str) -> int:
         return int(date[:4])
 
-    def name_force_initials(self, name):
+    def name_force_initials(self, name: str) -> str:
         return name.replace(". ",".").replace(".",". ")
 
-    def get_authorlist(self, cap: int = 2000, first_name=True):
+    def get_authorlist(self, cap: int = 2000, first_name: bool = True) -> str:
         
         if cap == 1:
             return f'{self.authors_lastname[0]} {"et al" if self.author_count > 1 else ""}'
@@ -163,13 +198,14 @@ class InspiresRecord:
                 last_entry = self.name_force_initials(f'{self.authors_lastname[-1]}')
             return ''.join(_full_author_list) + last_entry
 
-    def get_authorlist_bibtex_style(self, cap: int = 2000):
+    def get_authorlist_bibtex_style(self, cap: int = 2000) -> str:
         
         if cap == 1:
             return f'{self.authors_lastname[0]} {"et al" if self.author_count > 1 else ""}'
         else:
             if self.author_count > 2000:
-                raise Warning("Found more than 2000 authors in record {self.texkey}")
+                warnings.warn("Capping at 2000 authors in record {self.texkey}.")
+                cap = 2000
             else:
                 nauthors = min(self.author_count, cap)
                 _full_author_list_bibtex_style = [] 
