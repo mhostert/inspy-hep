@@ -1,8 +1,6 @@
 __version__='0.1.0'
 
-# from inspyhep import inspire_tools
-# from inspyhep import author
 
 # Main classes of InSPy-HEP
-# from inspyhep.Author import Author
-# from inspyhep.InspiresRecord import InspiresRecord
+from inspyhep.inspire_tools import InspireRecord
+from inspyhep.author import Author

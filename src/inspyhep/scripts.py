@@ -5,7 +5,7 @@ import requests
 import numpy as np
 import argparse
 
-from inspyhep import InspiresRecord
+from inspyhep import InspireRecord
 from inspyhep import Author
 
 def inspyhep():

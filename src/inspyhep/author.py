@@ -4,7 +4,7 @@ import numpy as np
 import json
 import datetime
 
-from inspyhep.inspires_tools import InspiresRecord
+from inspyhep.inspire_tools import InspireRecord
 
 class Author():
     def __init__(self, identifier, max_papers=1000):
@@ -41,11 +41,11 @@ class Author():
         self.num_hits = self.full_json_records['hits']['total']
 
         # Fill in information about author's papers from the website response
-        self.inspires_records = self.get_records_dict(self.full_json_records)
+        self.inspire_records = self.get_records_dict(self.full_json_records)
 
         # total number of citations
-        self.citations = self.get_total_number_of_citations(self.inspires_records, )
-        self.citations_noself = self.get_total_number_of_citations(self.inspires_records, self_cite=False)
+        self.citations = self.get_total_number_of_citations(self.inspire_records, )
+        self.citations_noself = self.get_total_number_of_citations(self.inspire_records, self_cite=False)
 
 
     def get_total_number_of_citations(self, 
@@ -62,11 +62,11 @@ class Author():
         Parameters
         ----------
         records : dict
-            the dictionary with asll the InspiresRecord instances
+            the dictionary with asll the InspireRecord instances
         self_cite : bool, optional
             if True, count self citations, otherwise do not. By default True
         only_citeable : bool, optional
-            if True, count only records that are citeable according to Inspires standard (i.e., can reliably be tracked). By default False
+            if True, count only records that are citeable according to Inspire standard (i.e., can reliably be tracked). By default False
         only_published : bool, optional
             if True, count records that are not published. By default True
         before_date:
@@ -89,7 +89,7 @@ class Author():
                     or record.date > before_date\
                     or record.date < after_date\
                     or (in_year is not None and record.date.year != in_year)
-                    
+
             if skip:
                 continue
             else:
@@ -105,7 +105,7 @@ class Author():
         Parameters
         ----------
         json_record : str
-            str with json output of inspires query
+            str with json output of inspire query
 
         Returns
         -------
@@ -113,19 +113,19 @@ class Author():
             a dictionary with keys containing instances of the InspireRecord class,
             accessible with inspire texkeys (e.g., dic['weinberd:2002abc'])
         """
-        inspires_records = {}
+        inspire_records = {}
         for record in json_records['hits']['hits']:
-            r = InspiresRecord(record['metadata'])
-            inspires_records[f'{r.texkey}'] = r
-        return inspires_records
+            r = InspireRecord(record['metadata'])
+            inspire_records[f'{r.texkey}'] = r
+        return inspire_records
 
     def get_full_records_from_query(self, query) -> str:
-        """get_full_record_from_query get the full result of the author query to Inspires
+        """get_full_record_from_query get the full result of the author query to Inspire
 
         Parameters
         ----------
         query : str
-            url string with the author query following Inspires API
+            url string with the author query following Inspire API
 
         Returns
         -------
@@ -155,7 +155,7 @@ class Author():
             list_nonpeerreviewed = ''
         newline = '\n'
         item = '\\item '
-        for record in self.inspires_records.values():
+        for record in self.inspire_records.values():
             entry = ''
             if record.author_count < author_count_to_exclude:
                 cited = (record.citation_count > 0)
