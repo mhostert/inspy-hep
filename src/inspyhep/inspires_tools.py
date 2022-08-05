@@ -1,4 +1,6 @@
 import warnings
+from typing import Union
+import json
 import requests
 from pylatexenc.latexencode import unicode_to_latex
 from dataclasses import dataclass
@@ -7,8 +9,18 @@ import datetime
 class InspiresRecord:
     """Class for storing Inspires record information."""
 
-    def __init__(self, json_record: dict, cap_authors = 100):
-        self.json_record = json_record
+    def __init__(self, info: Union[dict,str], cap_authors = 100):
+
+        # if texkey was passed, then request json info from Inspires API
+        if type(info) is str:
+            _records_found = json.loads(self.get_record_from_inspires_query(texkey=info))['hits']['hits']
+            if len(_records_found)>1:
+                warnings.warn(f'More than one record found with key = {info}. Reading the first one.')
+            self.json_record = _records_found[0]['metadata']
+        # else, assume we have the json data already
+        else:
+            self.json_record = info
+        
         self._cap_authors = cap_authors
 
         # Load all inspires record attributes as "ins_{key}"
@@ -21,6 +33,10 @@ class InspiresRecord:
         except AttributeError:
             warnings.warn(f"No texkey found for record {self.json_record}. Skipping it.")
             return 
+
+        # title
+        self.title = self.ins_titles[0]['title'] if hasattr(self, 'ins_titles') else None
+
 
         # main key that identifies a record (used by latex)
         self.document_type = self.ins_document_type[0]
@@ -118,6 +134,9 @@ class InspiresRecord:
 
         # Is it published
         self.published = (len(self.pub_title)>0)
+        self.journal = self.pub_title if self.published else None
+        self.pub_info = f'{self.pub_title} {self.pub_volume} ({self.pub_year}) {self.pub_issue} {self.pub_artid}, {self.year}' if self.published else None
+
         # Is it a proceedings?
         self.proceedings = (['document_type'] == 'conference paper')
         # Is it citeable according to inspires? (can be reliably tracked)
@@ -176,15 +195,16 @@ class InspiresRecord:
             arxiv_suffix = ''
 
         if self.published:
-            return f'{authors_shown}, {self.pub_title} {self.pub_volume} ({self.pub_year}) {self.pub_issue} {self.pub_artid}, {self.year}{arxiv_suffix}.'
+            _repr = f'{authors_shown}, {self.pub_info}{arxiv_suffix}.'
         elif self.document_type == 'article':
-            return f'{authors_shown}, preprint, {self.year}{arxiv_suffix}.'
+            _repr = f'{authors_shown}, preprint, {self.year}{arxiv_suffix}.'
         elif self.document_type == 'conference paper' or self.document_type == 'proceedings' or self.document_type == 'report':
-            return f'{authors_shown}, proceedings, {self.year}{arxiv_suffix}.'
+            _repr = f'{authors_shown}, proceedings, {self.year}{arxiv_suffix}.'
         elif self.document_type == 'thesis':
-            return f'{authors_shown}, thesis, {self.year}{arxiv_suffix}.'
+            _repr = f'{authors_shown}, thesis, {self.year}{arxiv_suffix}.'
         else:
-            return f'{authors_shown}, {self.year}{arxiv_suffix}.'
+            _repr = f'{authors_shown}, {self.year}{arxiv_suffix}.'
+        return _repr.replace("   ", " ").replace("  ", " ").replace(" ,", ",").replace(" .", ".")
 
     def get_date(self, date: str) -> tuple:
         try:
@@ -238,3 +258,32 @@ class InspiresRecord:
                 for f in self.authors_fullname[:nauthors-1]:
                     _full_author_list_bibtex_style.append(f'{f} and ')
                 return ''.join(_full_author_list_bibtex_style) + f'{self.authors_fullname[-1]}'
+
+
+    def get_record_from_inspires_query(self, texkey: str) -> str:
+        """get_record_from_inspires_query get the Inspires record from url
+
+        Parameters
+        ----------
+        texkey : str
+            tex key of the record to be used in the Inspires API query
+
+        Returns
+        -------
+        str
+            full string output from the Inpires query
+        """
+        # Query Inspire-HEP for author's information
+        _inspire_query = 'https://inspirehep.net/api/literature'
+        self.record_query = f'{_inspire_query}?q=texkeys:{texkey}'
+
+        # Load the full record of the author
+        response = requests.get(self.record_query)
+        if response.status_code == 200:
+            return (response.content).decode("utf-8")
+        else:
+            warnings.warn(f"Could not find Inspire entry for author identified = {self.identifier}.")
+            return None
+
+
+            
