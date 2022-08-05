@@ -8,7 +8,8 @@ A simplified Python interface to your Inspire-HEP data.
 This is an independent tool made public with the hope it will be helpful to others, but without any guarantee. See also project by [efranzin](https://github.com/efranzin/python) and [motloch](https://github.com/motloch/track_inspire-hep_citations).
 
 For official products, see
-[![InspireHEP](https://img.shields.io/badge/Inspire_HEP-.net-dodgerblue.svg)](https://inspirehep.net/) [![InspireGEP](https://img.shields.io/badge/Inspire_HEP-on_GitHub-lightyellow.svg)](https://github.com/inspirehep)
+
+[![InspireHEP](https://img.shields.io/badge/Inspire_HEP-.net-lightcyan.svg)](https://inspirehep.net/) [![InspireGEP](https://img.shields.io/badge/Inspire_HEP-on_GitHub-pink.svg)](https://github.com/inspirehep)
 
 
 ---
