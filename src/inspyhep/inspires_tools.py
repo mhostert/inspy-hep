@@ -2,23 +2,24 @@ import warnings
 import requests
 from pylatexenc.latexencode import unicode_to_latex
 from dataclasses import dataclass
+import datetime
 
 class InspiresRecord:
     """Class for storing Inspires record information."""
 
-    def __init__(self, record: dict, cap_authors = 100):
-        self.record = record
+    def __init__(self, json_record: dict, cap_authors = 100):
+        self.json_record = json_record
         self._cap_authors = cap_authors
 
         # Load all inspires record attributes as "ins_{key}"
-        for key in self.record.keys():
-            setattr(self, f'ins_{key}', self.record[key])
+        for key in self.json_record.keys():
+            setattr(self, f'ins_{key}', self.json_record[key])
 
         # main key that identifies a record (used by latex)
         try:
             self.texkey = self.ins_texkeys[0]
         except AttributeError:
-            warnings.warn(f"No texkey found for record {self.record}. Skipping it.")
+            warnings.warn(f"No texkey found for record {self.json_record}. Skipping it.")
             return 
 
         # main key that identifies a record (used by latex)
@@ -59,54 +60,59 @@ class InspiresRecord:
         self.capped_at_1_authorlist_fullname = self.get_authorlist(cap=1)
         self.capped_at_3_authorlist_fullname = self.get_authorlist(cap=3)
 
-        ''' Year information. Tries the following:
-            1 - Journal
+        ''' Date information. Tries the following:
+            1 - Inspires earliest_date
             2 - preprint date
-            3 - Inspires earliest_date
+            3 - Journal
             4 - info in texkeys
         '''
         try:
-            self.year = int(self.record['publication_info'][0]['year'])
+            self.year, self.month, self.day = self.get_date(self.json_record['earliest_date'])
         except KeyError:
             try:
-                self.year = self.get_year_from_date(self.record['preprint_date'])
+                self.year, self.month, self.day = self.get_date(self.json_record['preprint_date'])
             except KeyError:
                 try:
-                    self.year = self.get_year_from_date(self.record['earliest_date'])
+                    self.year, self.month, self.day = int(self.json_record['publication_info'][0]['year']), 1, 1
                 except KeyError:
                     try:
-                        self.year = self.get_year_from_texkeys(self.record['texkeys'])
+                        self.year, self.month, self.day = self.get_year_from_texkeys(self.json_record['texkeys']), 1, 1
                     except KeyError:
-                        print("No year found in Inspires record.")
-                        self.year = None
+                        warnings.warn("No date found in Inspires record.")
+                        self.year = 1
+                        self.month = 1
+                        self.day = 1
+
+        self.date = datetime.date(int(self.year), int(self.month), int(self.day))
+
 
         # Title of the Journal
         try:
-            self.pub_title = self.record['publication_info'][0]['journal_title']
+            self.pub_title = self.json_record['publication_info'][0]['journal_title']
         except KeyError:
             self.pub_title = ''
         
         # Journal Volume
         try:
-            self.pub_volume = self.record['publication_info'][0]['journal_volume']
+            self.pub_volume = self.json_record['publication_info'][0]['journal_volume']
         except KeyError:
             self.pub_volume = ''
         
         # Journal Issue
         try:
-            self.pub_issue = self.record['publication_info'][0]['journal_issue']
+            self.pub_issue = self.json_record['publication_info'][0]['journal_issue']
         except KeyError:
             self.pub_issue = ''
 
         # Journal article id
         try:
-            self.pub_artid = self.record['publication_info'][0]['artid']
+            self.pub_artid = self.json_record['publication_info'][0]['artid']
         except KeyError:
             self.pub_artid = ''
         
         # publication id 
         try:
-            self.pub_year = int(self.record['publication_info'][0]['year'])
+            self.pub_year = int(self.json_record['publication_info'][0]['year'])
         except KeyError:
             self.pub_year = ''
 
@@ -114,16 +120,18 @@ class InspiresRecord:
         self.published = (len(self.pub_title)>0)
         # Is it a proceedings?
         self.proceedings = (['document_type'] == 'conference paper')
+        # Is it citeable according to inspires? (can be reliably tracked)
+        self.citeable = self.ins_citeable if hasattr(self, 'ins_citeable') else False
 
         # arXiv number (xxxx.yyyyy)
         try:
-            self.arxiv_number = self.record['arxiv_eprints'][0]['value']
+            self.arxiv_number = self.json_record['arxiv_eprints'][0]['value']
         except KeyError:
             self.arxiv_number = None
         
         # arXiv category (e.g., hep-ph)
         try:
-            self.primary_arxiv_category = self.record['primary_arxiv_category']
+            self.primary_arxiv_category = self.json_record['primary_arxiv_category']
         except KeyError:
             self.primary_arxiv_category = None
 
@@ -178,11 +186,21 @@ class InspiresRecord:
         else:
             return f'{authors_shown}, {self.year}{arxiv_suffix}.'
 
+    def get_date(self, date: str) -> tuple:
+        try:
+            y, m, d = date.split(sep='-')
+        except ValueError:
+            try:
+                y, m = date.split(sep='-')
+                d = '1'
+            except ValueError:
+                y = date
+                m = '1'
+                d = '1'
+        return y, m, d
+
     def get_year_from_texkeys(self, texkey: str) -> int:
         return int(texkey.partition(":")[2][:4])
-
-    def get_year_from_date(self, date: str) -> int:
-        return int(date[:4])
 
     def name_force_initials(self, name: str) -> str:
         return name.replace(". ",".").replace(".",". ")

@@ -2,9 +2,9 @@ import warnings
 import requests
 import numpy as np
 import json
+import datetime
 
 from inspyhep.inspires_tools import InspiresRecord
-import requests
 
 class Author():
     def __init__(self, identifier, max_papers=1000):
@@ -19,12 +19,14 @@ class Author():
 
 
             Modified from
-                * https://github.com/efranzin/python 
+                * https://github.com/efranzin/python
                 * https://github.com/motloch/track_inspire-hep_citations
 
         """
 
         self.identifier    = identifier
+        self.snapshot_date = datetime.datetime.now()
+
         self.max_papers    = max_papers
         self.max_title_length = 100
 
@@ -43,18 +45,36 @@ class Author():
 
         # total number of citations
         self.citations = self.get_total_number_of_citations(self.inspires_records, )
-        self.citations_noself = self.get_total_number_of_citations(self.inspires_records, cite_self=False)
+        self.citations_noself = self.get_total_number_of_citations(self.inspires_records, self_cite=False)
 
 
-    def get_total_number_of_citations(self, records: dict, cite_self=True) -> int:
+    def get_total_number_of_citations(self, 
+                                        records: dict,
+                                        self_cite: bool =True,
+                                        only_citeable: bool =False,
+                                        only_published: bool =False,
+                                        before_date: datetime.date =datetime.date.today(),
+                                        after_date: datetime.date =datetime.date.min,
+                                        in_year: int =None,
+                                        max_nauthors: int =None) -> int:
         """ get_total_number_of_citations
 
         Parameters
         ----------
         records : dict
             the dictionary with asll the InspiresRecord instances
-        cite_self : bool, optional
+        self_cite : bool, optional
             if True, count self citations, otherwise do not. By default True
+        only_citeable : bool, optional
+            if True, count only records that are citeable according to Inspires standard (i.e., can reliably be tracked). By default False
+        only_published : bool, optional
+            if True, count records that are not published. By default True
+        before_date:
+            only count records before a ceratain date (e.g datetime.date(2020, 3, 20))
+        after_date:
+            only count records after a ceratain date (e.g datetime.date(2020, 3, 20))
+        max_nauthors:
+            only count records with an author count less than of max_nauthors
 
         Returns
         -------
@@ -63,10 +83,20 @@ class Author():
         """
         count = 0
         for record in records.values():
-            if cite_self:
-                count += record.citation_count
+            skip = (only_citeable and not record.citeable)\
+                    or (only_published and not record.published)\
+                    or (max_nauthors is not None and record.author_count > max_nauthors)\
+                    or record.date > before_date\
+                    or record.date < after_date\
+                    or (in_year is not None and record.date.year != in_year)
+                    
+            if skip:
+                continue
             else:
-                count += record.ins_citation_count_without_self_citations
+                if self_cite:
+                    count += record.citation_count
+                else:
+                    count += record.ins_citation_count_without_self_citations
         return count
 
     def get_records_dict(self, json_records) -> dict:
@@ -108,7 +138,7 @@ class Author():
         if response.status_code == 200:
             return (response.content).decode("utf-8")
         else:
-            print(f"Could not find Inspire entry for author identified = {self.identifier}.")
+            warnings.warn(f"Could not find Inspire entry for author identified = {self.identifier}.")
             return None
 
     def nice_publication_list(self, include_title: bool = True,
@@ -153,7 +183,11 @@ class Author():
                 pub_list += entry
 
         if split_peer_review and latex_itemize:
-            pub_list += '\\textbf{Peer-reviewed publications}\n\\begin{enumerate}\n' + list_peer_reviewed + '\\end{enumerate}\n \\textbf{Under review or non-peer review}\n \\begin{enumerate} \n' + list_nonpeerreviewed + '\\end{enumerate} '
+            pub_list += '\\textbf{Peer-reviewed publications}\n\\begin{enumerate}\n'\
+                        + list_peer_reviewed\
+                        + '\\end{enumerate}\n\\textbf{Under review or non-peer reviewed publications}\n\\begin{enumerate} \n'\
+                        + list_nonpeerreviewed\
+                        + '\\end{enumerate}'
         else:
             if latex_itemize:
                 pub_list = '\\begin{enumerate}\n' + pub_list + '\\end{enumerate}'
