@@ -3,7 +3,8 @@ import requests
 import numpy as np
 import json
 
-from inspyhep import InspiresRecord
+from inspyhep.inspires_tools import InspiresRecord
+import requests
 
 class Author():
     def __init__(self, identifier, max_papers=1000):
@@ -38,7 +39,7 @@ class Author():
         self.num_hits = self.full_json_records['hits']['total']
 
         # Fill in information about author's papers from the website response
-        self.get_records_dict(self.full_json_records)
+        self.inspires_records = self.get_records_dict(self.full_json_records)
 
         # total number of citations
         self.citations = self.get_total_number_of_citations(self.inspires_records, )
@@ -82,11 +83,11 @@ class Author():
             a dictionary with keys containing instances of the InspireRecord class,
             accessible with inspire texkeys (e.g., dic['weinberd:2002abc'])
         """
-        self.inspires_records = {}
+        inspires_records = {}
         for record in json_records['hits']['hits']:
             r = InspiresRecord(record['metadata'])
-            self.inspires_records[f'{r.texkey}'] = r
-        return self.inspires_records
+            inspires_records[f'{r.texkey}'] = r
+        return inspires_records
 
     def get_full_records_from_query(self, query) -> str:
         """get_full_record_from_query get the full result of the author query to Inspires
@@ -109,3 +110,52 @@ class Author():
         else:
             print(f"Could not find Inspire entry for author identified = {self.identifier}.")
             return None
+
+    def nice_publication_list(self, include_title: bool = True,
+                                    author_count_to_exclude: int = 10,
+                                    include_citation: bool =True,
+                                    def_well_cited: int =10,
+                                    arxiv: bool =True,
+                                    split_peer_review: bool = False,
+                                    latex_itemize: str = False) -> str:
+
+        pub_list = ''
+        list_peer_reviewed = ''
+        if split_peer_review:
+            list_nonpeerreviewed = ''
+        newline = '\n'
+        item = '\\item '
+        for record in self.inspires_records.values():
+            entry = ''
+            if record.author_count < author_count_to_exclude:
+                cited = (record.citation_count > 0)
+                well_cited = (record.citation_count > def_well_cited)
+                backslash_char = "\\textbf{"
+                citation = f', [citations: { f"{backslash_char}" if well_cited else ""}{record.citation_count}{"}" if well_cited else ""}]'
+
+                if latex_itemize:
+                    entry += item
+                if include_title:
+                    entry += f'{record.ins_titles[0]["title"]}, '
+                if arxiv:
+                    entry += record.__repr__(cap_author_list=author_count_to_exclude)[:-1]
+                if include_citation and cited:
+                    entry += citation
+
+                entry += f'.{newline}'
+
+            if split_peer_review:
+                if record.published:
+                    list_peer_reviewed += entry
+                else:
+                    list_nonpeerreviewed += entry
+            else:
+                pub_list += entry
+
+        if split_peer_review and latex_itemize:
+            pub_list += '\\textbf{Peer-reviewed publications}\n\\begin{enumerate}\n' + list_peer_reviewed + '\\end{enumerate}\n \\textbf{Under review or non-peer review}\n \\begin{enumerate} \n' + list_nonpeerreviewed + '\\end{enumerate} '
+        else:
+            if latex_itemize:
+                pub_list = '\\begin{enumerate}\n' + pub_list + '\\end{enumerate}'
+
+        return pub_list.replace("  "," ")

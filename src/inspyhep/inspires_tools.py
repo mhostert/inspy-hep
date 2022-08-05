@@ -153,22 +153,30 @@ class InspiresRecord:
             return None
             
 
-    def __repr__(self) -> str:
-        if self.author_count > 3:
+    def __repr__(self, cap_author_list=5) -> str:
+        if self.author_count > cap_author_list:
             authors_shown = self.capped_at_1_authorlist
         else:
             authors_shown = self.capped_at_3_authorlist
         
-        if self.published:
-            return f'{authors_shown}, {self.pub_title} {self.pub_volume} ({self.pub_year}) {self.pub_issue} {self.pub_artid}, {self.year}, arXiv:{self.arxiv_number} [{self.primary_arxiv_category[0]}].'
-        elif self.document_type == 'article':
-            return f'{authors_shown}, preprint, {self.year}, arXiv:{self.arxiv_number} [{self.primary_arxiv_category[0]}].'
-        elif self.document_type == 'conference paper' or self.document_type == 'proceedings' or self.document_type == 'report':
-            return f'{authors_shown}, proceedings, {self.year}, arXiv:{self.arxiv_number} [{self.primary_arxiv_category[0]}].'
-        elif self.document_type == 'thesis':
-            return f'{authors_shown}, thesis, {self.year}, arXiv:{self.arxiv_number} [{self.primary_arxiv_category[0]}].'
+        if self.arxiv_number is not None:
+            if self.primary_arxiv_category is not None:
+                arxiv_suffix = f', arXiv:{self.arxiv_number} [{self.primary_arxiv_category[0]}]'
+            else:
+                arxiv_suffix = f', arXiv:{self.arxiv_number}.'
         else:
-            return f'{authors_shown}, {self.year}, arXiv:{self.arxiv_number} [{self.primary_arxiv_category[0]}].'
+            arxiv_suffix = ''
+
+        if self.published:
+            return f'{authors_shown}, {self.pub_title} {self.pub_volume} ({self.pub_year}) {self.pub_issue} {self.pub_artid}, {self.year}{arxiv_suffix}.'
+        elif self.document_type == 'article':
+            return f'{authors_shown}, preprint, {self.year}{arxiv_suffix}.'
+        elif self.document_type == 'conference paper' or self.document_type == 'proceedings' or self.document_type == 'report':
+            return f'{authors_shown}, proceedings, {self.year}{arxiv_suffix}.'
+        elif self.document_type == 'thesis':
+            return f'{authors_shown}, thesis, {self.year}{arxiv_suffix}.'
+        else:
+            return f'{authors_shown}, {self.year}{arxiv_suffix}.'
 
     def get_year_from_texkeys(self, texkey: str) -> int:
         return int(texkey.partition(":")[2][:4])
