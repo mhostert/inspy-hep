@@ -1,26 +1,35 @@
 import warnings
+from inspect import signature
 from typing import Union
 import json
 import requests
 from pylatexenc.latexencode import unicode_to_latex
-from dataclasses import dataclass
 import datetime
+import time
+
+from inspyhep import metadata
 
 class InspireRecord:
     """Class for storing Inspire record information."""
 
-    def __init__(self, info: Union[dict,str], cap_authors = 100):
+    def __init__(self, input: Union[dict,str], cap_authors: int =100):
 
+        self.input = input
         # if texkey was passed, then request json info from Inspire API
-        if type(info) is str:
-            _records_found = json.loads(self.get_record_from_inspire_query(texkey=info))['hits']['hits']
+        if type(self.input) is str:
+            _content = self.get_record_from_inspire_query(texkey=self.input)
+            _records_found = json_load_hits(_content)
             if len(_records_found)>1:
-                warnings.warn(f'More than one record found with key = {info}. Reading the first one.')
-            self.json_record = _records_found[0]['metadata']
+                warnings.warn(f'More than one record found with key = {self.input}. Reading the first one.')
+                _records_found = [_records_found[0]]
+            elif len(_records_found)==0:
+                raise ValueError(f"No record found with requests.get({self.record_query}) for input texkey '{self.input}'")
+            else:
+                self.json_record = _records_found[0]['metadata']
         # else, assume we have the json data already
         else:
-            self.json_record = info
-        
+            self.json_record = self.input
+
         self._cap_authors = cap_authors
 
         # Load all inspire record attributes as "ins_{key}"
@@ -31,50 +40,10 @@ class InspireRecord:
         try:
             self.texkey = self.ins_texkeys[0]
         except AttributeError:
-            warnings.warn(f"No texkey found for record {self.json_record}. Skipping it.")
-            return None
+            raise ValueError(f"No texkey found for record {self.json_record}.")
 
         # title
         self.title = self.ins_titles[0]['title'] if hasattr(self, 'ins_titles') else None
-
-
-        # main key that identifies a record (used by latex)
-        self.document_type = self.ins_document_type[0]
-
-        # first author
-        self.first_author = unicode_to_latex(self.ins_first_author['full_name'])
-        
-        # number of authors
-        self.author_count = self.ins_author_count
-        
-        # list of first, last, and full names
-        self.authors_firstname = []
-        self.authors_lastname = []
-        self.authors_fullname = []
-        for a in self.ins_authors:
-            if 'first_name' in a.keys():
-                self.authors_firstname.append(a['first_name'])
-            else:
-                self.authors_firstname.append('')
-            if 'last_name' in a.keys():
-                self.authors_lastname.append(a['last_name'])
-            else:
-                self.authors_lastname.append('')
-            if 'full_name' in a.keys():
-                self.authors_fullname.append(a['full_name'])
-            else:
-                self.authors_fullname.append('')
-        
-        # 'Salam, G. and Weinber, S.'
-        self.authorlist = self.get_authorlist()
-        # 'G. Salam, S. Weinberg'
-        self.authorlist_bibtex_style = self.get_authorlist_bibtex_style()
-        
-        self.capped_at_1_authorlist = f'{self.authors_lastname[0]} et al'
-        self.capped_at_3_authorlist = self.get_authorlist(cap=3, first_name=False)
-
-        self.capped_at_1_authorlist_fullname = self.get_authorlist(cap=1)
-        self.capped_at_3_authorlist_fullname = self.get_authorlist(cap=3)
 
         ''' Date information. Tries the following:
             1 - Inspire earliest_date
@@ -102,18 +71,54 @@ class InspireRecord:
         self.date = datetime.date(int(self.year), int(self.month), int(self.day))
 
 
+        # main key that identifies a record (used by latex)
+        self.document_type = self.ins_document_type[0]
+
+        # first author
+        self.first_author = unicode_to_latex(self.ins_first_author['full_name'])
+        
+        # number of authors
+        self.author_count = self.ins_author_count
+        
+        # create a dictionary of author dataclasses
+        self.authors = {}
+        for a in self.ins_authors:
+            meta = metadata.author(**a)
+            self.authors[meta.bai] = meta
+            self.authors[meta.bai].last_update = self.date
+
+        # This loops over all possible author properties and creates lists of these for all authors of this record
+        # called authors_{prop} (e.g., authors_first_name = ['Alice', 'Bob'])
+        for prop in signature(metadata.author).parameters.keys():
+            if prop == 'affiliations':
+                setattr(self, f'authors_{prop}', [ a[prop][0]["value"] if prop in a.keys() else '' for a in self.ins_authors])
+            else:
+                setattr(self, f'authors_{prop}', [ a[prop] if prop in a.keys() else '' for a in self.ins_authors])
+
+        # 'Salam, G. and Weinber, S.'
+        self.authorlist = self.get_authorlist()
+        # 'G. Salam, S. Weinberg'
+        self.authorlist_bibtex_style = self.get_authorlist_bibtex_style()
+        
+        self.capped_at_1_authorlist = f'{self.authors_last_name[0]} et al'
+        self.capped_at_3_authorlist = self.get_authorlist(cap=3, first_name=False)
+
+        self.capped_at_1_authorlist_full_name = self.get_authorlist(cap=1)
+        self.capped_at_3_authorlist_full_name = self.get_authorlist(cap=3)
+
+
         # Title of the Journal
         try:
             self.pub_title = self.json_record['publication_info'][0]['journal_title']
         except KeyError:
             self.pub_title = ''
-        
+
         # Journal Volume
         try:
             self.pub_volume = self.json_record['publication_info'][0]['journal_volume']
         except KeyError:
             self.pub_volume = ''
-        
+
         # Journal Issue
         try:
             self.pub_issue = self.json_record['publication_info'][0]['journal_issue']
@@ -125,7 +130,7 @@ class InspireRecord:
             self.pub_artid = self.json_record['publication_info'][0]['artid']
         except KeyError:
             self.pub_artid = ''
-        
+
         # publication id 
         try:
             self.pub_year = int(self.json_record['publication_info'][0]['year'])
@@ -158,35 +163,61 @@ class InspireRecord:
         if self.arxiv_number is not None:
             self.arxiv_url = f'https://arxiv.org/abs/{self.arxiv_number}'
         else:
-            self.arxiv_number = None
+            self.arxiv_url = None
 
         self.citation_count = self.ins_citation_count
         self.ins_citation_count_without_self_citations = self.ins_citation_count_without_self_citations
         self.citation_count_no_self = self.ins_citation_count_without_self_citations
 
     def get_bibtex(self) -> str:
-        """get_bibtex get the bibtex entry for a record from the Inspire key
+        """get_bibtex get the bibtex entry for a record from the Inspire key"""
+        return make_request(f"https://inspirehep.net/api/literature?q=texkeys:{self.texkey}&format=bibtex")
+    
+    def arxiv_url_builder(self, name: str, format: str = 'latex') -> str:
+        
+        if self.arxiv_url is not None:
+            rb = '}'
+            lb = '{'
+            bs = '\\'
+            ARXIV_URLS = {
+                            'latex': f'{bs}href{lb}{name}{rb}{lb}self.arxiv_url{rb}',
+                            'latex_url': f'{bs}url{lb}self.arxiv_url{rb}',
+                            #
+                            'markdown': f'[{name}]({self.arxiv_url})',
+                            'markdown_url': f'{self.arxiv_url}',
+                            #
+                            'html': f'<a href="{self.arxiv_url}">{name}</a>',
+                            'html_url': f'<a href="{self.arxiv_url}">{self.arxiv_url}</a>',
+                        }
 
-        """
-        response = requests.get(f"https://inspirehep.net/api/literature?q=texkeys:{self.texkey}&format=bibtex")
-        if response.status_code == 200:
-            return (response.content).decode("utf-8")
+            try:
+                return ARXIV_URLS[format]
+            except KeyError:
+                warnings.warn("arXiv URL in format '{format}' not implemented.")
+                return None
         else:
-            warnings.warn(f"Could not find Inspire entry for texkey={self.key}.")
-            return None
-            
+            return ''
 
-    def __repr__(self, cap_author_list=5) -> str:
+        
+
+    def __repr__(self, cap_author_list=5, 
+                        arxiv_category: bool = True,
+                        arxiv_url=None,
+                        ) -> str:
+
         if self.author_count > cap_author_list:
             authors_shown = self.capped_at_1_authorlist
         else:
             authors_shown = self.capped_at_3_authorlist
         
         if self.arxiv_number is not None:
-            if self.primary_arxiv_category is not None:
+            if self.primary_arxiv_category is not None and arxiv_category:
                 arxiv_suffix = f', arXiv:{self.arxiv_number} [{self.primary_arxiv_category[0]}]'
             else:
-                arxiv_suffix = f', arXiv:{self.arxiv_number}.'
+                arxiv_suffix = f', arXiv:{self.arxiv_number}'
+            if arxiv_url is not None:
+                arxiv_suffix = f', {self.arxiv_url_builder(arxiv_suffix[2:], format=arxiv_url)}'
+
         else:
             arxiv_suffix = ''
 
@@ -224,26 +255,26 @@ class InspireRecord:
     def get_authorlist(self, cap: int = 2000, first_name: bool = True) -> str:
         
         if cap == 1:
-            return f'{self.authors_lastname[0]} {"et al" if self.author_count > 1 else ""}'
+            return f'{self.authors_last_name[0]} {"et al" if self.author_count > 1 else ""}'
         else:
             nauthors = min(self.author_count, cap)
             # string of author lists in different formats 
             _full_author_list = [] 
-            for f,l in zip(self.authors_firstname[:nauthors-1],self.authors_lastname[:nauthors-1]):
+            for f,l in zip(self.authors_first_name[:nauthors-1],self.authors_last_name[:nauthors-1]):
                 if first_name:
                     _full_author_list.append(self.name_force_initials(f'{f} {l}, '))
                 else:
                     _full_author_list.append(self.name_force_initials(f'{l}, '))
             if first_name:
-                last_entry = self.name_force_initials(f'{self.authors_firstname[-1]} {self.authors_lastname[-1]}')
+                last_entry = self.name_force_initials(f'{self.authors_first_name[-1]} {self.authors_last_name[-1]}')
             else:
-                last_entry = self.name_force_initials(f'{self.authors_lastname[-1]}')
+                last_entry = self.name_force_initials(f'{self.authors_last_name[-1]}')
             return ''.join(_full_author_list) + last_entry
 
     def get_authorlist_bibtex_style(self, cap: int = 2000) -> str:
         
         if cap == 1:
-            return f'{self.authors_lastname[0]} {"et al" if self.author_count > 1 else ""}'
+            return f'{self.authors_last_name[0]} {"et al" if self.author_count > 1 else ""}'
         else:
             if self.author_count > 2000:
                 warnings.warn("Capping at 2000 authors in record {self.texkey}.")
@@ -251,9 +282,9 @@ class InspireRecord:
             else:
                 nauthors = min(self.author_count, cap)
                 _full_author_list_bibtex_style = [] 
-                for f in self.authors_fullname[:nauthors-1]:
+                for f in self.authors_full_name[:nauthors-1]:
                     _full_author_list_bibtex_style.append(f'{f} and ')
-                return ''.join(_full_author_list_bibtex_style) + f'{self.authors_fullname[-1]}'
+                return ''.join(_full_author_list_bibtex_style) + f'{self.authors_full_name[-1]}'
 
 
     def get_record_from_inspire_query(self, texkey: str) -> str:
@@ -273,13 +304,73 @@ class InspireRecord:
         _inspire_query = 'https://inspirehep.net/api/literature'
         self.record_query = f'{_inspire_query}?q=texkeys:{texkey}'
 
-        # Load the full record of the author
-        response = requests.get(self.record_query)
-        if response.status_code == 200:
-            return (response.content).decode("utf-8")
-        else:
-            warnings.warn(f"Could not find Inspire entry for author identified = {self.identifier}.")
-            return None
+        return make_request(self.record_query)
 
 
-            
+def make_request(query: str) -> str:
+    """make_request make request to website
+
+    Parameters
+    ----------
+    query : str
+        url with query to be used by requests.get().
+
+    Returns
+    -------
+    str
+        response of the request in utf-8 format string
+    """
+
+    # Attempting to request data
+    for attempt in range(10):
+        # Try
+        try:
+            response = requests.get(query)
+            response.raise_for_status()
+            try:
+                return (response.content).decode("utf-8").replace("$", "")
+            except AttributeError:
+                warnings.warn('Could not decode website response.content = {response.content}. Skipping decoding.')
+                return response.content
+
+        # Too many requests
+        except requests.exceptions.HTTPError as err:
+            if response.status_code == 429:
+                warnings.warn("You have exceeded the number of requests in 5s set by Inspire. Waiting 5s to try again.")
+                time.sleep(5 + 0.01)
+            else:
+                warnings.warn(f"Could not access Inspire data (request status_code = {response.status_code}).")
+                warnings.warn(err)
+                warnings.warn("Trying again...")
+                return None
+    else:
+        warnings.warn(f"Could not access Inspire data using query = {response.url} (request status_code = {response.status_code})")
+        return None
+
+
+def json_load_hits(content: str) -> list:
+    """json_load_hits Loads the content of the inspire response into a json format
+
+        Note: I do not believe there is any useful information in the top dictionary, 
+        so we always take the value of ['hits']['hits'].
+
+    Parameters
+    ----------
+    content : str
+        content in utf-8 formatted string from requests.get
+
+    Returns
+    -------
+    list
+        the list of hits found.
+    """
+    try:
+        loaded = json.loads(content)
+    except AttributeError:
+        warnings.warn(f"Not able to load the content of the Inspire request with json. Content = {content}")
+        return None
+    
+    try:
+        return loaded['hits']['hits']
+    except KeyError:
+        return loaded

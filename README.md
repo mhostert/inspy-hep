@@ -1,15 +1,15 @@
 ## InSPy-HEP
 
-Inspire-HEP Statistics with Python
+Inspire-HEP Statistics with Python $-$ A simplified Python interface to your Inspire-HEP data.
 
 
-A simplified Python interface to your Inspire-HEP data.
-
-This is an independent tool made public with the hope it will be helpful to others, but without any guarantee. See also project by [efranzin](https://github.com/efranzin/python) and [motloch](https://github.com/motloch/track_inspire-hep_citations).
+#### Acknowledgements
+This is an independent tool made public with the hope it will be helpful to others, but without any guarantee. 
+Co-author finding tool adapted from [coauthors](https://bitbucket.org/dradice/coauthors/src/master/) by David Radice. See also projects by [efranzin](https://github.com/efranzin/python) and [motloch](https://github.com/motloch/track_inspire-hep_citations).
 
 For official products, see
 
-[![InspireHEP](https://img.shields.io/badge/Inspire_HEP-.net-lightcyan.svg)](https://inspirehep.net/) [![InspireGEP](https://img.shields.io/badge/Inspire_HEP-on_GitHub-pink.svg)](https://github.com/inspirehep)
+[![InspireHEP](https://img.shields.io/badge/Inspire_HEP-.net-lightcyan.svg)](https://inspirehep.net/) [![InspireGEP](https://img.shields.io/badge/Inspire_HEP-on_GitHub-pink.svg)](https://github.com/inspirehep) 
 
 
 ---
@@ -64,20 +64,41 @@ to get a latex-formatted string:
 \end{enumerate}
 ```
 
----
-##### How information is retrieved
+##### Listing co-authors
 
-To obtain all the author information, we query Inspire as
+Adapted from [coauthors](https://bitbucket.org/dradice/coauthors/src/master/) by David Radice.
+
+
+
+
+
+
+---
+##### Calls to Inspire API
+
+To obtain all the literature records from a given author, we query the Inspire API with
 ```sh
-https://inspirehep.net/api/literature?sort=mostrecent&size=MAX_PAPER&q=a%20AUTHOR_IDENTIFIER
+https://inspirehep.net/api/literature?sort=mostrecent&size=MAX_PAPER&q=a AUTHOR_IDENTIFIER
 ```
 where AUTHOR_IDENTIFIER is the identifier of the author (e.g., Steven.Weinberg.1).
-To obtain all the information of a given Inspire record, we use:
+To obtain all the information of a given Inspire literature record, we use:
 ```sh
 https://inspirehep.net/api/literature?q=texkeys:TEXKEY
 ```
-where TEXKEY is the record.texkey (e.g., 'Weinberg:1967tq').
+where TEXKEY is the record.texkey (e.g., 'Weinberg:1967tq'). 
+
+For the documentation of the Inspire API, see the [documentation](https://github.com/inspirehep/rest-api-doc).
 
 --------
+
+#### To-do
+
+* Develop institution class
+* Full literature and institution dataclasses like for Author
+* Write command line scripts
+* Count co-authors
+* Add geographical information
+* Implement tests
+
 
 <p><small>Project based on the <a target="_blank" href="https://drivendata.github.io/cookiecutter-data-science/">cookiecutter data science project template</a>. #cookiecutterdatascience</small></p>

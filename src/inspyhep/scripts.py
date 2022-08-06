@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
 
-import warnings
-import requests
-import numpy as np
 import argparse
 
 from inspyhep import InspireRecord
