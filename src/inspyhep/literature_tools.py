@@ -97,7 +97,7 @@ class InspireRecord:
 
         # 'Salam, G. and Weinber, S.'
         self.authorlist = self.get_authorlist()
-        # 'G. Salam, S. Weinberg'
+        # 'G. Salam, and S. Weinberg'
         self.authorlist_bibtex_style = self.get_authorlist_bibtex_style()
         
         self.capped_at_1_authorlist = f'{self.authors_last_name[0]} et al'
@@ -140,7 +140,7 @@ class InspireRecord:
         # Is it published
         self.published = (len(self.pub_title)>0)
         self.journal = self.pub_title if self.published else None
-        self.pub_info = f'{self.pub_title} {self.pub_volume} ({self.pub_year}) {self.pub_issue} {self.pub_artid}, {self.year}' if self.published else None
+        self.pub_info = f'{self.pub_title} {self.pub_volume} ({self.pub_year}) {self.pub_issue} {self.pub_artid}' if self.published else None
 
         # Is it a proceedings?
         self.proceedings = (['document_type'] == 'conference paper')
@@ -203,14 +203,14 @@ class InspireRecord:
     def __repr__(self, cap_author_list=5, 
                         arxiv_category: bool = True,
                         arxiv_url=None,
+                        include_arxiv=True,
+                        include_title=False,
+                        include_citation=False,
                         ) -> str:
 
-        if self.author_count > cap_author_list:
-            authors_shown = self.capped_at_1_authorlist
-        else:
-            authors_shown = self.capped_at_3_authorlist
+        authors_shown = self.get_authorlist(cap=cap_author_list)
         
-        if self.arxiv_number is not None:
+        if self.arxiv_number is not None and include_arxiv:
             if self.primary_arxiv_category is not None and arxiv_category:
                 arxiv_suffix = f', arXiv:{self.arxiv_number} [{self.primary_arxiv_category[0]}]'
             else:
@@ -231,6 +231,8 @@ class InspireRecord:
             _repr = f'{authors_shown}, thesis, {self.year}{arxiv_suffix}.'
         else:
             _repr = f'{authors_shown}, {self.year}{arxiv_suffix}.'
+        if include_title:
+            _repr = f'{self.title}, {_repr}'
         return _repr.replace("   ", " ").replace("  ", " ").replace(" ,", ",").replace(" .", ".")
 
     def get_date(self, date: str) -> tuple:
@@ -252,7 +254,7 @@ class InspireRecord:
     def name_force_initials(self, name: str) -> str:
         return name.replace(". ",".").replace(".",". ")
 
-    def get_authorlist(self, cap: int = 2000, first_name: bool = True) -> str:
+    def get_authorlist(self, cap: int = 10, first_name: bool = True) -> str:
         
         if cap == 1:
             return f'{self.authors_last_name[0]} {"et al" if self.author_count > 1 else ""}'
@@ -276,9 +278,9 @@ class InspireRecord:
         if cap == 1:
             return f'{self.authors_last_name[0]} {"et al" if self.author_count > 1 else ""}'
         else:
-            if self.author_count > 2000:
-                warnings.warn("Capping at 2000 authors in record {self.texkey}.")
-                cap = 2000
+            if self.author_count > 10:
+                warnings.warn("Capping at 10 authors in record {self.texkey}.")
+                cap = 10
             else:
                 nauthors = min(self.author_count, cap)
                 _full_author_list_bibtex_style = [] 
@@ -328,9 +330,10 @@ def make_request(query: str) -> str:
             response = requests.get(query)
             response.raise_for_status()
             try:
-                return (response.content).decode("utf-8").replace("$", "")
+                return response.content.decode().replace("$", "")
             except AttributeError:
-                warnings.warn('Could not decode website response.content = {response.content}. Skipping decoding.')
+                message = f'Could not decode website response.content = {(response.content)}. Skipping decoding.'
+                warnings.warn(message)
                 return response.content
 
         # Too many requests

@@ -7,7 +7,7 @@ import datetime
 from inspyhep.literature_tools import InspireRecord, make_request, json_load_hits
 
 class Institution():
-    def __init__(self, identifier, max_hits: int =1000):
+    def __init__(self, identifier, max_hits: int = 1000):
         """ Institution()
 
             Parameters
@@ -21,9 +21,10 @@ class Institution():
 
         self.identifier    = identifier
         self.snapshot_date = datetime.datetime.now()
+        self.max_hits = max_hits
 
-        # Query Inspire-HEP for author's information
-        self.author_query = f'https://inspirehep.net/api/institutions?size={self.max_papers}&q={self.identifier}'
+        # Query Inspire-HEP for institutions's information
+        self.institution_query = f'https://inspirehep.net/api/institutions?size={self.max_hits}&q={self.identifier}'
 
         self.full_record = self.get_full_records_from_query()
         self.full_json_records = json_load_hits(self.full_record)

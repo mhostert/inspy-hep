@@ -1,3 +1,9 @@
+# Local tests, notebooks, and plots
+examples/*.pdf
+examples/*.png
+examples/test_*
+examples/test_plots/*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
