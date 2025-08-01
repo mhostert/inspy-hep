@@ -133,7 +133,7 @@ class Author:
             try:
                 r = InspireRecord(record["metadata"])
             except ValueError:
-                warnings.warn("Skipping record.")
+                warnings.warn(f"Skipping record {record}. Could not parse it.")
                 continue
             if self.valid_record(r, **kwargs):
                 # if the record is valid, add it to the dictionary
