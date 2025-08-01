@@ -25,6 +25,12 @@ class author:
     affiliations: List = field(default_factory=lambda: [])
     record: Dict = field(default_factory=lambda: {})
     full_name: str = ""
+    death_date: str = ""
+    birth_date: str = ""
+    last_update: datetime.date = field(default_factory=lambda: datetime.date(1, 1, 1))
+    affiliation: str = ""
+    primary_email_address: str = ""
+
     #
     # complete
     advisors: List = field(default_factory=lambda: [])

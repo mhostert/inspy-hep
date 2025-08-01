@@ -12,7 +12,7 @@ For official products, see
 [![InspireHEP](https://img.shields.io/badge/Inspire_HEP-.net-lightcyan.svg)](https://inspirehep.net/) [![InspireGEP](https://img.shields.io/badge/Inspire_HEP-on_GitHub-pink.svg)](https://github.com/inspirehep) 
 
 
-<p><small>Please note this is a simply a tool, and, hopefully as you already know, author metrics should not be overinterpreted.
+<p><small>Please note this is a simply a tool. Author metrics do not paint the full picture of a researcher.
 </small></p>
 
 ---

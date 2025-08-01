@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 
 from inspyhep import metadata
 from inspyhep.literature_tools import InspireRecord, make_request, json_load_hits
+import numpy as np
 
 
 def strip_string(string):
@@ -57,11 +58,11 @@ class Author:
             self.author_metadata_query = f"https://inspirehep.net/api/authors?q=ids.value:{self.bai}"
             self.json_metadata = json_load_hits(make_request(self.author_metadata_query))[0]["metadata"]
 
-        ## We start by loading the overview of the author
+        # We start by loading the overview of the author
         self.metadata = metadata.author(**self.json_metadata)
         self.bai = self.metadata.bai
 
-        ## Then we load all the author's literature records
+        # Then we load all the author's literature records
         self.author_record_query = f"https://inspirehep.net/api/literature?sort=mostrecent&size={self.max_papers}&q=a%20{self.bai}"
         self.full_json_records = json_load_hits(make_request(self.author_record_query))
         # Fill in information about author's papers from the website response
@@ -69,7 +70,7 @@ class Author:
         # how many records found?
         self.num_hits = len(self.inspire_records)
 
-        ## And finally, we use the latest inspire_record to draw even more information on the author
+        # And finally, we use the latest inspire_record to draw even more information on the author
         for author in self.full_json_records[0]["metadata"]["authors"]:
             if "recid" in author.keys() and author["recid"] == self.metadata.recid:
                 self.json_metadata.update(author)
@@ -110,7 +111,7 @@ class Author:
                     count += record.ins_citation_count_without_self_citations
         return count
 
-    def get_records_dict(self, json_records) -> dict:
+    def get_records_dict(self, json_records=None, **kwargs) -> dict:
         """get_record_json get a dictionary of all inspire records for this author
 
         Parameters
@@ -124,6 +125,9 @@ class Author:
             A dictionary containing instances of the InspireRecord class keys corresponding to the inspire texkeys
             (e.g., dic['weinberd:2002abc'])
         """
+        if json_records is None:
+            json_records = self.full_json_records
+
         inspire_records = {}
         for record in json_records:
             try:
@@ -131,8 +135,39 @@ class Author:
             except ValueError:
                 warnings.warn("Skipping record.")
                 continue
-            inspire_records[f"{r.texkey}"] = r
+            if self.valid_record(r, **kwargs):
+                # if the record is valid, add it to the dictionary
+                if r.texkey not in inspire_records.keys():
+                    # if the texkey is not already in the dictionary, add it
+                    inspire_records[f"{r.texkey}"] = r
+                else:
+                    # if the texkey is already in the dictionary, update it
+                    inspire_records[f"{r.texkey}"].update(r)
+            else:
+                continue
         return inspire_records
+
+    def get_number_of_records(self, json_records=None, **kwargs) -> int:
+        """get_number_of_records get the number of inspire records for this author
+
+        Parameters
+        ----------
+        json_record : str
+            str with json output of inspire query
+
+        Returns
+        -------
+        dict
+            A dictionary containing instances of the InspireRecord class keys corresponding to the inspire texkeys
+            (e.g., dic['weinberd:2002abc'])
+        """
+        count = 0
+        for record in self.inspire_records.values():
+            if not self.valid_record(record, **kwargs):
+                continue
+            else:
+                count += 1
+        return count
 
     def nice_publication_list(
         self,
@@ -220,7 +255,6 @@ class Author:
 
         # dictionary of metadata author dataclasses
         coauthors = {}
-        coauthors_joint_records = {}
         for record in self.inspire_records.values():
             # determine if record is to be included given certain requirements
             if not self.valid_record(record, **kwargs):
@@ -230,7 +264,7 @@ class Author:
                 if author.bai == self.bai:
                     continue
                 # Check if this is a new author
-                if not author.bai in coauthors.keys():
+                if author.bai not in coauthors.keys():
                     coauthors[author.bai] = author
                 # Coauthor is known, but might be updated
                 else:
@@ -292,6 +326,7 @@ class Author:
         only_published: bool = False,
         before_date: datetime.date = datetime.date.today(),
         after_date: datetime.date = datetime.date.min,
+        min_citations: int = 0,
         in_year: int = None,
         max_nauthors: int = 10,
         from_keys: list = None,
@@ -305,6 +340,14 @@ class Author:
             if True, count only records that are citeable according to Inspire standard (i.e., can reliably be tracked). By default False
         only_published : bool, optional
             if True, count records that are not published. By default True
+        min_citations : int, optional
+            only count records with a minimum number of citations, by default 0
+        in_year : int, optional
+            only count records from a given year, by default None
+        from_keys : list, optional
+            only count records from a given list of texkeys, by default None
+        exclude_keys : list, optional
+            only count records that are not in a given list of texkeys, by default None
         before_date:
             only count records before a ceratain date (e.g datetime.date(2020, 3, 20))
         after_date:
@@ -322,6 +365,7 @@ class Author:
             (only_citeable and not record.citeable)
             or (only_published and not record.published)
             or (max_nauthors is not None and record.author_count > max_nauthors)
+            or (record.citation_count < min_citations)
             or (record.date > before_date)
             or (record.date < after_date)
             or (in_year is not None and record.date.year != in_year)
@@ -331,12 +375,24 @@ class Author:
 
         return not invalid
 
-    def get_citations_per_year(self, year_range: tuple = (2000, datetime.date.today().year), self_cite: bool = True, **kwargs) -> list:
-        years = range(*year_range)
-        kwargs = {"max_nauthors": 10}
+    def get_publications_per_year(self, year_range: tuple = (2000, datetime.date.today().year), cumulative: bool = False, **kwargs) -> list:
+        years = range(year_range[0], year_range[1] + 1)
+        publications = []
+        for y in years:
+            publications.append(self.get_number_of_records(in_year=y, max_nauthors=10, **kwargs))
+        if cumulative:
+            publications = np.cumsum(publications)
+        return publications
+
+    def get_citations_per_year(
+        self, year_range: tuple = (2000, datetime.date.today().year), cumulative: bool = False, self_cite: bool = True, **kwargs
+    ) -> list:
+        years = range(year_range[0], year_range[1] + 1)
         citations = []
         for y in years:
-            citations.append(self.get_total_number_of_citations(in_year=y, self_cite=True, **kwargs))
+            citations.append(self.get_total_number_of_citations(in_year=y, self_cite=self_cite, max_nauthors=10))
+        if cumulative:
+            citations = np.cumsum(citations)
         return citations
 
     def get_markdown_descriptor(self, path=".", **kwargs) -> str:
